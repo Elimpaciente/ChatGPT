@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
+import random
 
 app = FastAPI()
 
@@ -24,7 +25,6 @@ USER_AGENTS = [
 
 def get_headers():
     """Obtiene headers aleatorios para la petición"""
-    import random
     return {
         "Content-Type": "application/json",
         "Accept-Language": "en-US,en;q=0.9",
@@ -36,12 +36,15 @@ def get_headers():
 
 @app.get("/")
 async def root():
-    return {
-        "status": "online",
-        "message": "API de ChatGPT funcionando",
-        "developer": "El Impaciente",
-        "endpoint": "/chat?text=YOUR_QUERY"
-    }
+    return JSONResponse(
+        content={
+            "status_code": 200,
+            "developer": "El Impaciente",
+            "message": "API funcionando correctamente",
+            "endpoint": "/chat?text=YOUR_QUERY"
+        },
+        status_code=200
+    )
 
 @app.get("/chat")
 async def chat_query(text: str = None):
@@ -51,7 +54,7 @@ async def chat_query(text: str = None):
             content={
                 "status_code": 400,
                 "developer": "El Impaciente",
-                "message": "Se requiere el parámetro text"
+                "message": "El parámetro 'text' es requerido"
             },
             status_code=400
         )
@@ -62,7 +65,6 @@ async def chat_query(text: str = None):
         
         # Hacer petición a Chataibot con reintentos
         max_retries = 3
-        last_error = None
         
         async with httpx.AsyncClient(timeout=60.0) as client:
             for attempt in range(max_retries):
@@ -94,19 +96,16 @@ async def chat_query(text: str = None):
                     if response.status_code == 403 and attempt < max_retries - 1:
                         continue
                     
-                    last_error = f"HTTP {response.status_code}"
-                    
-                except httpx.TimeoutException:
-                    last_error = "Timeout en la petición"
-                except httpx.RequestError as e:
-                    last_error = f"Error de conexión: {str(e)}"
+                except (httpx.TimeoutException, httpx.RequestError):
+                    if attempt < max_retries - 1:
+                        continue
         
         # Si llegamos aquí, todos los intentos fallaron
         return JSONResponse(
             content={
                 "status_code": 400,
                 "developer": "El Impaciente",
-                "message": f"Error al conectar con el servicio: {last_error}"
+                "message": "No se pudo obtener respuesta del servicio"
             },
             status_code=400
         )
@@ -116,15 +115,18 @@ async def chat_query(text: str = None):
             content={
                 "status_code": 400,
                 "developer": "El Impaciente",
-                "message": f"Error: {str(e)}"
+                "message": f"Error al procesar la solicitud: {str(e)}"
             },
             status_code=400
         )
 
 @app.get("/health")
 async def health_check():
-    return {
-        "status": "healthy",
-        "service": "ChatGPT API via Chataibot.ru",
-        "developer": "El Impaciente"
-    }
+    return JSONResponse(
+        content={
+            "status_code": 200,
+            "developer": "El Impaciente",
+            "message": "Servicio en línea"
+        },
+        status_code=200
+    )
