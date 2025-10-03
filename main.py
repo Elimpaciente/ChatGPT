@@ -39,22 +39,20 @@ async def root():
     return JSONResponse(
         content={
             "status_code": 200,
-            "developer": "El Impaciente",
-            "message": "API funcionando correctamente",
-            "endpoint": "/chat?text=YOUR_QUERY"
+            "developer": "El Impaciente"
         },
         status_code=200
     )
 
 @app.get("/chat")
-async def chat_query(text: str = None):
+async def chat_query(text: str = ""):
     # Validar que el parámetro esté presente
-    if not text:
+    if not text or text.strip() == "":
         return JSONResponse(
             content={
                 "status_code": 400,
                 "developer": "El Impaciente",
-                "message": "El parámetro 'text' es requerido"
+                "message": "Se requiere el parámetro text"
             },
             status_code=400
         )
@@ -83,11 +81,22 @@ async def chat_query(text: str = None):
                     if response.status_code == 200:
                         data = response.json()
                         
+                        answer = data.get("answer", "")
+                        if not answer:
+                            return JSONResponse(
+                                content={
+                                    "status_code": 400,
+                                    "developer": "El Impaciente",
+                                    "message": "No se recibió respuesta"
+                                },
+                                status_code=400
+                            )
+                        
                         return JSONResponse(
                             content={
                                 "status_code": 200,
                                 "developer": "El Impaciente",
-                                "message": data.get("answer", "No se recibió respuesta")
+                                "message": answer
                             },
                             status_code=200
                         )
@@ -115,18 +124,7 @@ async def chat_query(text: str = None):
             content={
                 "status_code": 400,
                 "developer": "El Impaciente",
-                "message": f"Error al procesar la solicitud: {str(e)}"
+                "message": "Error al procesar la solicitud"
             },
             status_code=400
         )
-
-@app.get("/health")
-async def health_check():
-    return JSONResponse(
-        content={
-            "status_code": 200,
-            "developer": "El Impaciente",
-            "message": "Servicio en línea"
-        },
-        status_code=200
-    )
