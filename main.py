@@ -6,7 +6,6 @@ import random
 
 app = FastAPI()
 
-# Configurar CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -15,7 +14,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Configuración de Chataibot
 CHATAIBOT_URL = "https://chataibot.ru/api/promo-chat/messages"
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
@@ -24,7 +22,6 @@ USER_AGENTS = [
 ]
 
 def get_headers():
-    """Obtiene headers aleatorios para la petición"""
     return {
         "Content-Type": "application/json",
         "Accept-Language": "en-US,en;q=0.9",
@@ -46,7 +43,6 @@ async def root():
 
 @app.get("/chat")
 async def chat_query(text: str = ""):
-    # Validar que el parámetro esté presente
     if not text or text.strip() == "":
         return JSONResponse(
             content={
@@ -58,16 +54,12 @@ async def chat_query(text: str = ""):
         )
     
     try:
-        # Preparar mensajes para Chataibot
         messages = [{"role": "user", "content": text}]
-        
-        # Hacer petición a Chataibot con reintentos
         max_retries = 3
         
         async with httpx.AsyncClient(timeout=60.0) as client:
             for attempt in range(max_retries):
                 try:
-                    # Esperar entre reintentos
                     if attempt > 0:
                         import asyncio
                         await asyncio.sleep(2 * attempt)
@@ -80,8 +72,8 @@ async def chat_query(text: str = ""):
                     
                     if response.status_code == 200:
                         data = response.json()
-                        
                         answer = data.get("answer", "")
+                        
                         if not answer:
                             return JSONResponse(
                                 content={
@@ -101,7 +93,6 @@ async def chat_query(text: str = ""):
                             status_code=200
                         )
                     
-                    # Si es 403 y no es el último intento, continuar
                     if response.status_code == 403 and attempt < max_retries - 1:
                         continue
                     
@@ -109,7 +100,6 @@ async def chat_query(text: str = ""):
                     if attempt < max_retries - 1:
                         continue
         
-        # Si llegamos aquí, todos los intentos fallaron
         return JSONResponse(
             content={
                 "status_code": 400,
@@ -119,7 +109,7 @@ async def chat_query(text: str = ""):
             status_code=400
         )
         
-    except Exception as e:
+    except Exception:
         return JSONResponse(
             content={
                 "status_code": 400,
