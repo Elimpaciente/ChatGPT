@@ -2,10 +2,10 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
-import random
 
 app = FastAPI()
 
+# Configurar CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -14,107 +14,128 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-CHATAIBOT_URL = "https://chataibot.ru/api/promo-chat/messages"
-USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-]
-
-def get_headers():
-    return {
-        "Content-Type": "application/json",
-        "Accept-Language": "en-US,en;q=0.9",
-        "User-Agent": random.choice(USER_AGENTS),
-        "Referer": "https://chataibot.ru/app/free-chat",
-        "Accept": "application/json",
-        "Origin": "https://chataibot.ru"
-    }
+# API base URL
+OPENAI_API_URL = "https://free-unoffical-openai-api-sreejan.hf.space/v1/chat/completions"
 
 @app.get("/")
 async def root():
     return JSONResponse(
         content={
-            "status_code": 200,
-            "developer": "El Impaciente"
+            "status_code": 400,
+            "message": "The text parameter is required",
+            "developer": "El Impaciente",
+            "telegram_channel": "https://t.me/Apisimpacientes",
+            "usage": "Use /chat?text=your_question"
         },
-        status_code=200
+        status_code=400
     )
 
 @app.get("/chat")
 async def chat_query(text: str = ""):
+    # Validar que el parámetro esté presente
     if not text or text.strip() == "":
         return JSONResponse(
             content={
                 "status_code": 400,
+                "message": "The text parameter is required",
                 "developer": "El Impaciente",
-                "message": "Se requiere el parámetro text"
+                "telegram_channel": "https://t.me/Apisimpacientes",
+                "example": "/chat?text=What is Python?"
             },
             status_code=400
         )
     
     try:
-        messages = [{"role": "user", "content": text}]
-        max_retries = 3
-        
         async with httpx.AsyncClient(timeout=60.0) as client:
-            for attempt in range(max_retries):
-                try:
-                    if attempt > 0:
-                        import asyncio
-                        await asyncio.sleep(2 * attempt)
-                    
-                    response = await client.post(
-                        CHATAIBOT_URL,
-                        headers=get_headers(),
-                        json={"messages": messages}
-                    )
-                    
-                    if response.status_code == 200:
-                        data = response.json()
-                        answer = data.get("answer", "")
-                        
-                        if not answer:
-                            return JSONResponse(
-                                content={
-                                    "status_code": 400,
-                                    "developer": "El Impaciente",
-                                    "message": "No se recibió respuesta"
-                                },
-                                status_code=400
-                            )
-                        
-                        return JSONResponse(
-                            content={
-                                "status_code": 200,
-                                "developer": "El Impaciente",
-                                "message": answer
-                            },
-                            status_code=200
-                        )
-                    
-                    if response.status_code == 403 and attempt < max_retries - 1:
-                        continue
-                    
-                except (httpx.TimeoutException, httpx.RequestError):
-                    if attempt < max_retries - 1:
-                        continue
+            # Preparar la petición
+            payload = {
+                "model": "gpt-4o",  # Modelo más avanzado
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": text
+                    }
+                ],
+                "max_tokens": 4096,
+                "temperature": 0.7
+            }
+            
+            # Hacer la petición
+            response = await client.post(
+                OPENAI_API_URL,
+                json=payload,
+                headers={
+                    "Content-Type": "application/json"
+                }
+            )
+            
+            if response.status_code != 200:
+                return JSONResponse(
+                    content={
+                        "status_code": 400,
+                        "message": "Error connecting to AI service. Please try again.",
+                        "developer": "El Impaciente",
+                        "telegram_channel": "https://t.me/Apisimpacientes"
+                    },
+                    status_code=400
+                )
+            
+            # Extraer la respuesta
+            data = response.json()
+            ai_response = data["choices"][0]["message"]["content"]
+            
+            if not ai_response:
+                return JSONResponse(
+                    content={
+                        "status_code": 400,
+                        "message": "No response received from AI. Please try again.",
+                        "developer": "El Impaciente",
+                        "telegram_channel": "https://t.me/Apisimpacientes"
+                    },
+                    status_code=400
+                )
+            
+            return JSONResponse(
+                content={
+                    "status_code": 200,
+                    "message": ai_response,
+                    "model": "gpt-4o",
+                    "developer": "El Impaciente",
+                    "telegram_channel": "https://t.me/Apisimpacientes"
+                },
+                status_code=200
+            )
         
+    except httpx.TimeoutException:
         return JSONResponse(
             content={
                 "status_code": 400,
+                "message": "Request timeout. Please try again.",
                 "developer": "El Impaciente",
-                "message": "No se pudo obtener respuesta del servicio"
+                "telegram_channel": "https://t.me/Apisimpacientes"
             },
             status_code=400
         )
-        
-    except Exception:
+    except Exception as e:
         return JSONResponse(
             content={
                 "status_code": 400,
+                "message": "Error processing request. Please try again.",
                 "developer": "El Impaciente",
-                "message": "Error al procesar la solicitud"
+                "telegram_channel": "https://t.me/Apisimpacientes"
             },
             status_code=400
         )
+
+@app.get("/health")
+async def health_check():
+    return JSONResponse(
+        content={
+            "status": "healthy",
+            "service": "ChatGPT API (GPT-4o)",
+            "model": "gpt-4o",
+            "developer": "El Impaciente",
+            "telegram_channel": "https://t.me/Apisimpacientes"
+        },
+        status_code=200
+    )
