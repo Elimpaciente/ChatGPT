@@ -49,14 +49,14 @@ async def chat_query(text: str = ""):
         async with httpx.AsyncClient(timeout=60.0) as client:
             # Preparar la petición
             payload = {
-                "model": "gpt-4o",  # Modelo más avanzado
+                "model": "gpt-4-turbo",  # Modelo alternativo más estable
                 "messages": [
                     {
                         "role": "user",
                         "content": text
                     }
                 ],
-                "max_tokens": 4096,
+                "max_tokens": 2048,
                 "temperature": 0.7
             }
             
@@ -99,7 +99,7 @@ async def chat_query(text: str = ""):
                 content={
                     "status_code": 200,
                     "message": ai_response,
-                    "model": "gpt-4o",
+                    "model": "gpt-4-turbo",
                     "developer": "El Impaciente",
                     "telegram_channel": "https://t.me/Apisimpacientes"
                 },
@@ -132,8 +132,8 @@ async def health_check():
     return JSONResponse(
         content={
             "status": "healthy",
-            "service": "ChatGPT API (GPT-4o)",
-            "model": "gpt-4o",
+            "service": "ChatGPT API (GPT-4-Turbo)",
+            "model": "gpt-4-turbo",
             "developer": "El Impaciente",
             "telegram_channel": "https://t.me/Apisimpacientes"
         },
