@@ -1,7 +1,6 @@
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-import httpx
 import asyncio
 
 app = FastAPI()
@@ -15,29 +14,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Configuración de Puter.js API
-PUTER_API_URL = "https://api.puter.com/drivers/call"
-PUTER_APP_ID = "puter-chat-completion"
-
-def get_headers():
-    """Headers para Puter.js API"""
-    return {
-        "Content-Type": "application/json",
-        "Accept": "application/json"
-    }
+# Importar g4f
+try:
+    from g4f.client import Client
+    from g4f.Provider import Bing, You, Pizzagpt, GeekGpt, FreeGpt
+    g4f_available = True
+except ImportError:
+    g4f_available = False
 
 @app.get("/")
 async def root():
     return {
         "status": "online",
-        "message": "API de ChatGPT funcionando con Puter.js",
+        "message": "API de ChatGPT funcionando con GPT4Free",
         "developer": "El Impaciente",
         "endpoint": "/chat?text=YOUR_QUERY",
-        "models": "gpt-4o, gpt-4o-mini, claude-3.5-sonnet"
+        "g4f_status": "available" if g4f_available else "not installed"
     }
 
 @app.get("/chat")
-async def chat_query(text: str = None, model: str = "gpt-4o-mini"):
+async def chat_query(text: str = None, model: str = "gpt-3.5-turbo"):
     # Validar que el parámetro esté presente
     if not text:
         return JSONResponse(
@@ -49,64 +45,61 @@ async def chat_query(text: str = None, model: str = "gpt-4o-mini"):
             status_code=400
         )
     
+    # Verificar que g4f esté disponible
+    if not g4f_available:
+        return JSONResponse(
+            content={
+                "status_code": 400,
+                "developer": "El Impaciente",
+                "message": "GPT4Free no está instalado. Ejecuta: pip install -U g4f"
+            },
+            status_code=400
+        )
+    
     try:
-        # Preparar payload para Puter.js
-        payload = {
-            "interface": "puter-chat-completion",
-            "method": "complete",
-            "args": {
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": text
-                    }
-                ],
-                "model": model
-            }
-        }
+        # Preparar mensajes
+        messages = [{"role": "user", "content": text}]
         
-        # Hacer petición a Puter.js con reintentos
-        max_retries = 3
+        # Lista de proveedores para intentar
+        providers = [None, You, Pizzagpt, GeekGpt, FreeGpt, Bing]
+        max_retries = len(providers)
         last_error = None
         
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            for attempt in range(max_retries):
-                try:
-                    # Esperar entre reintentos
-                    if attempt > 0:
-                        await asyncio.sleep(2 * attempt)
-                    
-                    response = await client.post(
-                        PUTER_API_URL,
-                        headers=get_headers(),
-                        json=payload
-                    )
-                    
-                    if response.status_code == 200:
-                        data = response.json()
-                        
-                        # Extraer el mensaje de la respuesta
-                        message = data.get("result", {}).get("message", {}).get("content", "No se recibió respuesta")
-                        
-                        return JSONResponse(
-                            content={
-                                "status_code": 200,
-                                "developer": "El Impaciente",
-                                "message": message
-                            },
-                            status_code=200
-                        )
-                    
-                    # Si es 403 o 429 y no es el último intento, continuar
-                    if response.status_code in [403, 429] and attempt < max_retries - 1:
-                        continue
-                    
-                    last_error = f"HTTP {response.status_code}"
-                    
-                except httpx.TimeoutException:
-                    last_error = "Timeout en la petición"
-                except httpx.RequestError as e:
-                    last_error = f"Error de conexión: {str(e)}"
+        for attempt in range(max_retries):
+            try:
+                # Esperar entre reintentos
+                if attempt > 0:
+                    await asyncio.sleep(2 * attempt)
+                
+                # Crear cliente de g4f
+                client = Client()
+                provider = providers[attempt]
+                
+                # Hacer petición a g4f
+                response = await asyncio.to_thread(
+                    client.chat.completions.create,
+                    model=model,
+                    messages=messages,
+                    provider=provider
+                )
+                
+                # Extraer respuesta
+                message = response.choices[0].message.content
+                
+                return JSONResponse(
+                    content={
+                        "status_code": 200,
+                        "developer": "El Impaciente",
+                        "message": message
+                    },
+                    status_code=200
+                )
+                
+            except Exception as e:
+                last_error = str(e)
+                # Si no es el último intento, continuar con siguiente provider
+                if attempt < max_retries - 1:
+                    continue
         
         # Si llegamos aquí, todos los intentos fallaron
         return JSONResponse(
@@ -132,19 +125,24 @@ async def chat_query(text: str = None, model: str = "gpt-4o-mini"):
 async def health_check():
     return {
         "status": "healthy",
-        "service": "ChatGPT API via Puter.js",
-        "developer": "El Impaciente"
+        "service": "ChatGPT API via GPT4Free",
+        "developer": "El Impaciente",
+        "g4f_installed": g4f_available
     }
 
 @app.get("/models")
 async def list_models():
+    available_models = [
+        "gpt-3.5-turbo",
+        "gpt-4",
+        "gpt-4-turbo",
+        "claude-3-opus",
+        "gemini-pro"
+    ]
+    
     return {
         "status_code": 200,
         "developer": "El Impaciente",
-        "available_models": [
-            "gpt-4o",
-            "gpt-4o-mini",
-            "claude-3.5-sonnet"
-        ],
-        "usage": "/chat?text=YOUR_QUERY&model=gpt-4o"
+        "available_models": available_models,
+        "usage": "/chat?text=YOUR_QUERY&model=gpt-4"
     }
