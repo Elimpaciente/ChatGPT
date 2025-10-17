@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
+import asyncio
 
 app = FastAPI()
 
@@ -14,37 +15,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Configuración de Chataibot
-CHATAIBOT_URL = "https://chataibot.ru/api/promo-chat/messages"
-USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-]
+# Configuración de Puter.js API
+PUTER_API_URL = "https://api.puter.com/drivers/call"
+PUTER_APP_ID = "puter-chat-completion"
 
 def get_headers():
-    """Obtiene headers aleatorios para la petición"""
-    import random
+    """Headers para Puter.js API"""
     return {
         "Content-Type": "application/json",
-        "Accept-Language": "en-US,en;q=0.9",
-        "User-Agent": random.choice(USER_AGENTS),
-        "Referer": "https://chataibot.ru/app/free-chat",
-        "Accept": "application/json",
-        "Origin": "https://chataibot.ru"
+        "Accept": "application/json"
     }
 
 @app.get("/")
 async def root():
     return {
         "status": "online",
-        "message": "API de ChatGPT funcionando",
+        "message": "API de ChatGPT funcionando con Puter.js",
         "developer": "El Impaciente",
-        "endpoint": "/chat?text=YOUR_QUERY"
+        "endpoint": "/chat?text=YOUR_QUERY",
+        "models": "gpt-4o, gpt-4o-mini, claude-3.5-sonnet"
     }
 
 @app.get("/chat")
-async def chat_query(text: str = None):
+async def chat_query(text: str = None, model: str = "gpt-4o-mini"):
     # Validar que el parámetro esté presente
     if not text:
         return JSONResponse(
@@ -57,10 +50,22 @@ async def chat_query(text: str = None):
         )
     
     try:
-        # Preparar mensajes para Chataibot
-        messages = [{"role": "user", "content": text}]
+        # Preparar payload para Puter.js
+        payload = {
+            "interface": "puter-chat-completion",
+            "method": "complete",
+            "args": {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": text
+                    }
+                ],
+                "model": model
+            }
+        }
         
-        # Hacer petición a Chataibot con reintentos
+        # Hacer petición a Puter.js con reintentos
         max_retries = 3
         last_error = None
         
@@ -69,29 +74,31 @@ async def chat_query(text: str = None):
                 try:
                     # Esperar entre reintentos
                     if attempt > 0:
-                        import asyncio
                         await asyncio.sleep(2 * attempt)
                     
                     response = await client.post(
-                        CHATAIBOT_URL,
+                        PUTER_API_URL,
                         headers=get_headers(),
-                        json={"messages": messages}
+                        json=payload
                     )
                     
                     if response.status_code == 200:
                         data = response.json()
                         
+                        # Extraer el mensaje de la respuesta
+                        message = data.get("result", {}).get("message", {}).get("content", "No se recibió respuesta")
+                        
                         return JSONResponse(
                             content={
                                 "status_code": 200,
                                 "developer": "El Impaciente",
-                                "message": data.get("answer", "No se recibió respuesta")
+                                "message": message
                             },
                             status_code=200
                         )
                     
-                    # Si es 403 y no es el último intento, continuar
-                    if response.status_code == 403 and attempt < max_retries - 1:
+                    # Si es 403 o 429 y no es el último intento, continuar
+                    if response.status_code in [403, 429] and attempt < max_retries - 1:
                         continue
                     
                     last_error = f"HTTP {response.status_code}"
@@ -125,6 +132,19 @@ async def chat_query(text: str = None):
 async def health_check():
     return {
         "status": "healthy",
-        "service": "ChatGPT API via Chataibot.ru",
+        "service": "ChatGPT API via Puter.js",
         "developer": "El Impaciente"
+    }
+
+@app.get("/models")
+async def list_models():
+    return {
+        "status_code": 200,
+        "developer": "El Impaciente",
+        "available_models": [
+            "gpt-4o",
+            "gpt-4o-mini",
+            "claude-3.5-sonnet"
+        ],
+        "usage": "/chat?text=YOUR_QUERY&model=gpt-4o"
     }
