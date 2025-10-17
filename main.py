@@ -2,7 +2,6 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
-import random
 
 app = FastAPI()
 
@@ -15,9 +14,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Configuración de ChatSandbox
-CHATSANDBOX_URL = "https://chatsandbox.com/api/chat"
-
+# Configuración de Chataibot
+CHATAIBOT_URL = "https://chataibot.ru/api/promo-chat/messages"
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
@@ -26,11 +24,14 @@ USER_AGENTS = [
 
 def get_headers():
     """Obtiene headers aleatorios para la petición"""
+    import random
     return {
         "Content-Type": "application/json",
         "Accept-Language": "en-US,en;q=0.9",
         "User-Agent": random.choice(USER_AGENTS),
-        "Accept": "application/json"
+        "Referer": "https://chataibot.ru/app/free-chat",
+        "Accept": "application/json",
+        "Origin": "https://chataibot.ru"
     }
 
 @app.get("/")
@@ -56,13 +57,10 @@ async def chat_query(text: str = None):
         )
     
     try:
-        # Preparar payload para ChatSandbox
-        payload = {
-            "messages": [text],
-            "character": "openai-gpt-4o"
-        }
+        # Preparar mensajes para Chataibot
+        messages = [{"role": "user", "content": text}]
         
-        # Hacer petición a ChatSandbox con reintentos
+        # Hacer petición a Chataibot con reintentos
         max_retries = 3
         last_error = None
         
@@ -75,22 +73,19 @@ async def chat_query(text: str = None):
                         await asyncio.sleep(2 * attempt)
                     
                     response = await client.post(
-                        CHATSANDBOX_URL,
+                        CHATAIBOT_URL,
                         headers=get_headers(),
-                        json=payload
+                        json={"messages": messages}
                     )
                     
                     if response.status_code == 200:
                         data = response.json()
                         
-                        # Extraer la respuesta del formato de ChatSandbox
-                        answer = data.get("response", data.get("message", str(data)))
-                        
                         return JSONResponse(
                             content={
                                 "status_code": 200,
                                 "developer": "El Impaciente",
-                                "message": answer
+                                "message": data.get("answer", "No se recibió respuesta")
                             },
                             status_code=200
                         )
@@ -130,6 +125,6 @@ async def chat_query(text: str = None):
 async def health_check():
     return {
         "status": "healthy",
-        "service": "ChatGPT API via ChatSandbox",
+        "service": "ChatGPT API via Chataibot.ru",
         "developer": "El Impaciente"
     }
