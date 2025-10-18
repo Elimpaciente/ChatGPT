@@ -2,6 +2,10 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
+import random
+import asyncio
+
+chat_history = [] # Historial de la conversación
 
 app = FastAPI()
 
@@ -14,8 +18,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Configuración de Chataibot
-CHATAIBOT_URL = "https://chataibot.ru/api/promo-chat/messages"
+# Configuración de ChatSandbox API
+CHATSANDBOX_URL = "https://chatsandbox.com/api/chat"
+CHATSANDBOX_CHARACTER = "openai-gpt-4o" # Usaremos openai-gpt-4o como personaje por defecto
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
@@ -24,14 +29,13 @@ USER_AGENTS = [
 
 def get_headers():
     """Obtiene headers aleatorios para la petición"""
-    import random
     return {
         "Content-Type": "application/json",
         "Accept-Language": "en-US,en;q=0.9",
         "User-Agent": random.choice(USER_AGENTS),
-        "Referer": "https://chataibot.ru/app/free-chat",
+        "Referer": "https://chatsandbox.com/chat/" + CHATSANDBOX_CHARACTER, # Referer dinámico
         "Accept": "application/json",
-        "Origin": "https://chataibot.ru"
+        "Origin": "https://chatsandbox.com"
     }
 
 @app.get("/")
@@ -43,9 +47,10 @@ async def root():
         "endpoint": "/chat?text=YOUR_QUERY"
     }
 
-@app.get("/chat")
-async def chat_query(text: str = None):
+@app.post("/chat")
+async def chat_query(request: dict):
     # Validar que el parámetro esté presente
+    text = request.get("text")
     if not text:
         return JSONResponse(
             content={
@@ -57,10 +62,14 @@ async def chat_query(text: str = None):
         )
     
     try:
-        # Preparar mensajes para Chataibot
-        messages = [{"role": "user", "content": text}]
+        # Preparar mensajes para ChatSandbox
+        # Añadir el mensaje del usuario al historial
+        chat_history.append({"role": "user", "content": text})
         
-        # Hacer petición a Chataibot con reintentos
+        # Usar el historial completo para la petición
+        messages_payload = chat_history
+        
+        # Hacer petición a ChatSandbox con reintentos
         max_retries = 3
         last_error = None
         
@@ -69,23 +78,40 @@ async def chat_query(text: str = None):
                 try:
                     # Esperar entre reintentos
                     if attempt > 0:
-                        import asyncio
                         await asyncio.sleep(2 * attempt)
                     
                     response = await client.post(
-                        CHATAIBOT_URL,
+                        CHATSANDBOX_URL,
                         headers=get_headers(),
-                        json={"messages": messages}
+                        json={
+                            "messages": messages_payload,
+                            "character": CHATSANDBOX_CHARACTER
+                        }
                     )
                     
                     if response.status_code == 200:
-                        data = response.json()
+                        data = response.text.strip() # La respuesta de ChatSandbox es un string.
+                        
+                        # La respuesta de ChatSandbox es un string, no un JSON. Necesitamos extraer el texto.
+                        # Asumimos que la respuesta exitosa es el texto directamente, como en las pruebas anteriores.
+                        # Si la API de ChatSandbox devolviera un JSON con un campo específico (ej. 'answer'), se ajustaría aquí.
+                        # Por ahora, tratamos la respuesta como el mensaje directo.
                         
                         return JSONResponse(
                             content={
                                 "status_code": 200,
                                 "developer": "El Impaciente",
-                                "message": data.get("answer", "No se recibió respuesta")
+                                "message": data # La respuesta directa del chatbot
+                            })
+
+                        # Añadir la respuesta del chatbot al historial
+                        chat_history.append({"role": "assistant", "content": data.strip()}) # Guardar la respuesta limpia en el historial
+
+                        return JSONResponse(
+                            content={
+                                "status_code": 200,
+                                "developer": "El Impaciente",
+                                "message": data.strip() # Devolver la respuesta limpia al usuario
                             },
                             status_code=200
                         )
@@ -125,6 +151,6 @@ async def chat_query(text: str = None):
 async def health_check():
     return {
         "status": "healthy",
-        "service": "ChatGPT API via Chataibot.ru",
+        "service": "ChatGPT API via ChatSandbox.com",
         "developer": "El Impaciente"
     }
