@@ -59,8 +59,8 @@ async def chat_query(text: str = None):
         )
     
     try:
-        # Preparar mensajes para ChatSandbox
-        messages = [{"role": "user", "content": text}]
+        # Preparar mensajes para ChatSandbox - CORREGIDO: array de strings
+        messages = [text]
         
         # Hacer petición a ChatSandbox con reintentos
         max_retries = 3
@@ -82,20 +82,10 @@ async def chat_query(text: str = None):
                         }
                     )
                     
-                    # Debug: ver el código de estado
-                    print(f"Intento {attempt + 1}: Status {response.status_code}")
-                    
                     if response.status_code == 200:
-                        # La respuesta puede ser texto plano o JSON
-                        content_type = response.headers.get("content-type", "")
+                        data = response.text.strip()
                         
-                        if "application/json" in content_type:
-                            data = response.json()
-                            message = data.get("message") or data.get("answer") or data.get("response") or str(data)
-                        else:
-                            message = response.text.strip()
-                        
-                        if not message:
+                        if not data:
                             last_error = "Respuesta vacía"
                             continue
                         
@@ -103,7 +93,7 @@ async def chat_query(text: str = None):
                             content={
                                 "status_code": 200,
                                 "developer": "El Impaciente",
-                                "message": message
+                                "message": data
                             },
                             status_code=200
                         )
@@ -111,7 +101,6 @@ async def chat_query(text: str = None):
                     # Si es 429, esperar más tiempo
                     if response.status_code == 429:
                         if attempt < max_retries - 1:
-                            print(f"Rate limit detectado, esperando...")
                             await asyncio.sleep(10 + (attempt * 5))
                             continue
                     
@@ -119,7 +108,7 @@ async def chat_query(text: str = None):
                     if response.status_code == 403 and attempt < max_retries - 1:
                         continue
                     
-                    last_error = f"HTTP {response.status_code}: {response.text[:200]}"
+                    last_error = f"HTTP {response.status_code}"
                     
                 except httpx.TimeoutException:
                     last_error = "Timeout en la petición"
@@ -133,21 +122,21 @@ async def chat_query(text: str = None):
         # Si llegamos aquí, todos los intentos fallaron
         return JSONResponse(
             content={
-                "status_code": 503,
+                "status_code": 400,
                 "developer": "El Impaciente",
-                "message": f"Servicio no disponible: {last_error}"
+                "message": f"Error al conectar con el servicio: {last_error}"
             },
-            status_code=503
+            status_code=400
         )
         
     except Exception as e:
         return JSONResponse(
             content={
-                "status_code": 500,
+                "status_code": 400,
                 "developer": "El Impaciente",
                 "message": f"Error: {str(e)}"
             },
-            status_code=500
+            status_code=400
         )
 
 @app.get("/health")
