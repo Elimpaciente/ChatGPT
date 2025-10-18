@@ -18,21 +18,21 @@ app.add_middleware(
 
 # Configuración de ChatSandbox API
 CHATSANDBOX_URL = "https://chatsandbox.com/api/chat"
-CHATSANDBOX_CHARACTER = "openai-gpt-4o" # Usaremos openai-gpt-4o como personaje por defecto
+CHATSANDBOX_CHARACTER = "openai-gpt-4o"
 USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 ]
 
 def get_headers():
     """Obtiene headers aleatorios para la petición"""
     return {
         "Content-Type": "application/json",
+        "Accept": "*/*",
         "Accept-Language": "en-US,en;q=0.9",
         "User-Agent": random.choice(USER_AGENTS),
-        "Referer": "https://chatsandbox.com/chat/" + CHATSANDBOX_CHARACTER,
-        "Accept": "application/json",
+        "Referer": f"https://chatsandbox.com/chat/{CHATSANDBOX_CHARACTER}",
         "Origin": "https://chatsandbox.com"
     }
 
@@ -71,7 +71,7 @@ async def chat_query(text: str = None):
                 try:
                     # Esperar entre reintentos
                     if attempt > 0:
-                        await asyncio.sleep(2 * attempt)
+                        await asyncio.sleep(3 + (attempt * 2))
                     
                     response = await client.post(
                         CHATSANDBOX_URL,
@@ -82,47 +82,72 @@ async def chat_query(text: str = None):
                         }
                     )
                     
+                    # Debug: ver el código de estado
+                    print(f"Intento {attempt + 1}: Status {response.status_code}")
+                    
                     if response.status_code == 200:
-                        data = response.text.strip()
+                        # La respuesta puede ser texto plano o JSON
+                        content_type = response.headers.get("content-type", "")
+                        
+                        if "application/json" in content_type:
+                            data = response.json()
+                            message = data.get("message") or data.get("answer") or data.get("response") or str(data)
+                        else:
+                            message = response.text.strip()
+                        
+                        if not message:
+                            last_error = "Respuesta vacía"
+                            continue
                         
                         return JSONResponse(
                             content={
                                 "status_code": 200,
                                 "developer": "El Impaciente",
-                                "message": data
+                                "message": message
                             },
                             status_code=200
                         )
+                    
+                    # Si es 429, esperar más tiempo
+                    if response.status_code == 429:
+                        if attempt < max_retries - 1:
+                            print(f"Rate limit detectado, esperando...")
+                            await asyncio.sleep(10 + (attempt * 5))
+                            continue
                     
                     # Si es 403 y no es el último intento, continuar
                     if response.status_code == 403 and attempt < max_retries - 1:
                         continue
                     
-                    last_error = f"HTTP {response.status_code}"
+                    last_error = f"HTTP {response.status_code}: {response.text[:200]}"
                     
                 except httpx.TimeoutException:
                     last_error = "Timeout en la petición"
+                    if attempt < max_retries - 1:
+                        continue
                 except httpx.RequestError as e:
                     last_error = f"Error de conexión: {str(e)}"
+                    if attempt < max_retries - 1:
+                        continue
         
         # Si llegamos aquí, todos los intentos fallaron
         return JSONResponse(
             content={
-                "status_code": 400,
+                "status_code": 503,
                 "developer": "El Impaciente",
-                "message": f"Error al conectar con el servicio: {last_error}"
+                "message": f"Servicio no disponible: {last_error}"
             },
-            status_code=400
+            status_code=503
         )
         
     except Exception as e:
         return JSONResponse(
             content={
-                "status_code": 400,
+                "status_code": 500,
                 "developer": "El Impaciente",
                 "message": f"Error: {str(e)}"
             },
-            status_code=400
+            status_code=500
         )
 
 @app.get("/health")
