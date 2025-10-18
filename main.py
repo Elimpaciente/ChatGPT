@@ -5,8 +5,6 @@ import httpx
 import random
 import asyncio
 
-chat_history = [] # Historial de la conversación
-
 app = FastAPI()
 
 # Configurar CORS
@@ -33,7 +31,7 @@ def get_headers():
         "Content-Type": "application/json",
         "Accept-Language": "en-US,en;q=0.9",
         "User-Agent": random.choice(USER_AGENTS),
-        "Referer": "https://chatsandbox.com/chat/" + CHATSANDBOX_CHARACTER, # Referer dinámico
+        "Referer": "https://chatsandbox.com/chat/" + CHATSANDBOX_CHARACTER,
         "Accept": "application/json",
         "Origin": "https://chatsandbox.com"
     }
@@ -47,10 +45,9 @@ async def root():
         "endpoint": "/chat?text=YOUR_QUERY"
     }
 
-@app.post("/chat")
-async def chat_query(request: dict):
+@app.get("/chat")
+async def chat_query(text: str = None):
     # Validar que el parámetro esté presente
-    text = request.get("text")
     if not text:
         return JSONResponse(
             content={
@@ -63,11 +60,7 @@ async def chat_query(request: dict):
     
     try:
         # Preparar mensajes para ChatSandbox
-        # Añadir el mensaje del usuario al historial
-        chat_history.append({"role": "user", "content": text})
-        
-        # Usar el historial completo para la petición
-        messages_payload = chat_history
+        messages = [{"role": "user", "content": text}]
         
         # Hacer petición a ChatSandbox con reintentos
         max_retries = 3
@@ -84,34 +77,19 @@ async def chat_query(request: dict):
                         CHATSANDBOX_URL,
                         headers=get_headers(),
                         json={
-                            "messages": messages_payload,
+                            "messages": messages,
                             "character": CHATSANDBOX_CHARACTER
                         }
                     )
                     
                     if response.status_code == 200:
-                        data = response.text.strip() # La respuesta de ChatSandbox es un string.
-                        
-                        # La respuesta de ChatSandbox es un string, no un JSON. Necesitamos extraer el texto.
-                        # Asumimos que la respuesta exitosa es el texto directamente, como en las pruebas anteriores.
-                        # Si la API de ChatSandbox devolviera un JSON con un campo específico (ej. 'answer'), se ajustaría aquí.
-                        # Por ahora, tratamos la respuesta como el mensaje directo.
+                        data = response.text.strip()
                         
                         return JSONResponse(
                             content={
                                 "status_code": 200,
                                 "developer": "El Impaciente",
-                                "message": data # La respuesta directa del chatbot
-                            })
-
-                        # Añadir la respuesta del chatbot al historial
-                        chat_history.append({"role": "assistant", "content": data.strip()}) # Guardar la respuesta limpia en el historial
-
-                        return JSONResponse(
-                            content={
-                                "status_code": 200,
-                                "developer": "El Impaciente",
-                                "message": data.strip() # Devolver la respuesta limpia al usuario
+                                "message": data
                             },
                             status_code=200
                         )
