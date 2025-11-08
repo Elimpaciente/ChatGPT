@@ -1,0 +1,4 @@
+name = "gpt4"
+main = "gpt4.js"
+compatibility_date = "2024-01-01"
+workers_dev = true
